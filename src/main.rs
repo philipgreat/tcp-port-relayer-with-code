@@ -12,58 +12,64 @@ use tokio::net::{TcpListener, TcpStream};
 
 struct AppState {
     allowed_ips: RwLock<HashSet<String>>,
-    target_port: u16,
+    dest_port: u16,
 }
 
 #[tokio::main]
 async fn main() {
-    // 1. 获取并校验参数
+    // 1. 获取并解析复合参数
     let args: Vec<String> = env::args().collect();
-    if args.len() < 5 {
-        println!("用法: ./proxy <API_PORT> <TOKEN> <IN_PORT> <OUT_PORT>");
-        println!("示例: ./proxy 28901 MySecretKey 21180 22180");
+    if args.len() < 2 {
+        println!("用法: ./proxy <http_port>-<authkey>-<listen_port>-<dest_port>");
+        println!("示例: ./proxy 28901-UP8TR7iWp-22180-21180");
         return;
     }
 
-    let api_port: u16 = args[1].parse().expect("API 端口无效");
-    let token = args[2].clone();
-    let in_port: u16 = args[3].parse().expect("监听端口无效");
-    let out_port: u16 = args[4].parse().expect("目标端口无效");
+    let raw_config = &args[1];
+    let parts: Vec<&str> = raw_config.split('-').collect();
+    
+    if parts.len() != 4 {
+        println!("错误: 参数格式不正确，应为 4 个部分（用 '-' 分割）");
+        return;
+    }
+
+    let http_port: u16 = parts[0].parse().expect("无效的 http-manage-port");
+    let auth_key = parts[1].to_string();
+    let listen_port: u16 = parts[2].parse().expect("无效的 listenport");
+    let dest_port: u16 = parts[3].parse().expect("无效的 destport");
 
     let state = Arc::new(AppState {
         allowed_ips: RwLock::new(HashSet::new()),
-        target_port: out_port,
+        dest_port,
     });
 
-    // 2. 启动 HTTP API 控制平面
+    // 2. 启动 HTTP 管理服务
     let http_state = Arc::clone(&state);
     let app = Router::new()
-        .route(&format!("/{}", token), get(add_ip_handler))
+        .route(&format!("/{}", auth_key), get(add_ip_handler))
         .route("/list", get(list_ips_handler))
         .with_state(http_state);
 
-    let api_listener = TcpListener::bind(format!("0.0.0.0:{}", api_port))
-        .await
-        .expect("无法绑定 API 端口");
+    let http_addr = format!("0.0.0.0:{}", http_port);
+    let http_listener = TcpListener::bind(&http_addr).await.expect("无法绑定管理端口");
 
     println!("========================================");
-    println!("🚀 服务已启动");
-    println!("🔑 API 地址: http://0.0.0.0:{}/{}", api_port, token);
-    println!("📋 列表地址: http://0.0.0.0:{}/list", api_port);
-    println!("🛡️  转发路径: :{} -> 127.0.0.1:{}", in_port, out_port);
+    println!("🚀 代理服务已启动");
+    println!("🔗 管理地址: http://<IP>:{}/{}", http_port, auth_key);
+    println!("🛡️  转发配置: :{} -> 127.0.0.1:{}", listen_port, dest_port);
     println!("========================================");
 
     tokio::spawn(async move {
         axum::serve(
-            api_listener,
+            http_listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
         .await
         .unwrap();
     });
 
-    // 3. 启动 TCP 转发逻辑
-    let proxy_listener = TcpListener::bind(format!("0.0.0.0:{}", in_port))
+    // 3. 启动 TCP 转发服务
+    let proxy_listener = TcpListener::bind(format!("0.0.0.0:{}", listen_port))
         .await
         .expect("无法绑定监听端口");
 
@@ -77,26 +83,25 @@ async fn main() {
         let state_ref = Arc::clone(&state);
 
         tokio::spawn(async move {
+            // 检查白名单
             let is_allowed = {
                 let ips = state_ref.allowed_ips.read().unwrap();
                 ips.contains(&client_ip)
             };
-            
+
             if !is_allowed {
-                // 非白名单 IP 尝试连接时，直接静默关闭
-                return;
+                return; // 拒绝非法连接
             }
 
-            // 连接本地目标服务
-            if let Ok(mut outbound) = TcpStream::connect(format!("127.0.0.1:{}", state_ref.target_port)).await {
-                // 双向透传流量
+            // 转发到目标端口
+            if let Ok(mut outbound) = TcpStream::connect(format!("127.0.0.1:{}", state_ref.dest_port)).await {
                 let _ = copy_bidirectional(&mut inbound, &mut outbound).await;
             }
         });
     }
 }
 
-// --- 控制器函数 ---
+// --- 处理函数 ---
 
 async fn add_ip_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -105,7 +110,7 @@ async fn add_ip_handler(
     let ip = addr.ip().to_string();
     let mut ips = state.allowed_ips.write().unwrap();
     ips.insert(ip.clone());
-    format!("SUCCESS: IP {} 已加入白名单", ip)
+    format!("OK: IP {} 已授权", ip)
 }
 
 async fn list_ips_handler(state: State<Arc<AppState>>) -> Json<Vec<String>> {
