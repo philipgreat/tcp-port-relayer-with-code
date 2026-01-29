@@ -1,0 +1,11 @@
+[package]
+name = "tcp-auth-proxy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.7"
+# 异步运行时
+tokio = { version = "1.0", features = ["full"] }
+# 序列化/反序列化 (用于 /list 接口返回 JSON)
+serde = { version = "1.0", features = ["derive"] }
