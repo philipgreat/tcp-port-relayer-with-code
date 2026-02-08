@@ -2,6 +2,7 @@
 name = "tcp-auth-proxy"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 axum = "0.7"

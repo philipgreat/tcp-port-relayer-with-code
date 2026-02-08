@@ -20,9 +20,18 @@ struct AppState {
 
 #[tokio::main]
 async fn main() {
+
+
+
+    println!("============= BUILD at {}  by {}@{} ====================\n", 
+    env!("BUILD_TIME"),
+    env!("BUILD_USER"),
+    env!("BUILD_HOSTNAME"));
+    
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        println!("用法: ./tcp-auth-proxy <http_port>-<authkey>-<listen_port>-<dest>");
+        println!("用法: ./tcp-auth-proxy <http_port>-<authkey>-<listen_port>-<dest>\n");
         return;
     }
 
