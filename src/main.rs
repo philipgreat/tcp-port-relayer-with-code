@@ -11,7 +11,7 @@ use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
-const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(300); // 5 min
+const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(2*24*3600); // 5 min
 
 struct AppState {
     allowed_ips: RwLock<HashSet<String>>,
@@ -24,9 +24,9 @@ async fn main() {
 
 
     println!("============= BUILD at {}  by {}@{} ====================\n", 
-    env!("BUILD_TIME"),
-    env!("BUILD_USER"),
-    env!("BUILD_HOSTNAME"));
+        env!("BUILD_TIME"),
+        env!("BUILD_USER"),
+        env!("BUILD_HOSTNAME"));
     
 
     let args: Vec<String> = env::args().collect();
@@ -96,11 +96,12 @@ async fn main() {
 
         let client_ip = peer_addr.ip().to_string();
         let state_ref = Arc::clone(&state);
-
+        let key = auth_key.clone();
         tokio::spawn(async move {
             let allowed = {
+                
                 let ips = state_ref.allowed_ips.read().unwrap();
-                ips.contains(&client_ip)
+                ips.contains(&client_ip) || key == "noauthkey"
             };
 
             if !allowed {
