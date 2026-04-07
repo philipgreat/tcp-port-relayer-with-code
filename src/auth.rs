@@ -4,7 +4,6 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -115,5 +114,5 @@ pub fn build_auth_key(client_ip: &str, auth_key: &str, enable_hash: bool) -> Str
     let mut hasher = Sha256::new();
     hasher.update(client_ip.as_bytes());
     hasher.update(auth_key.as_bytes());
-    STANDARD.encode(hasher.finalize())
+    format!("{:x}", hasher.finalize())
 }

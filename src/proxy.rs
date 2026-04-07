@@ -29,7 +29,7 @@ pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
     println!("🚀 TCP 授权代理启动");
     if config.enable_hash {
         println!(
-            "🔐 管理接口: {}/<base64(sha256(client_ip + auth_key))>",
+            "🔐 管理接口: {}/<hex_lower(sha256(client_ip + auth_key))>",
             management_base_url
         );
     } else {

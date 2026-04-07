@@ -10,5 +10,4 @@ axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
 # 序列化/反序列化 (用于 /list 接口返回 JSON)
 serde = { version = "1.0", features = ["derive"] }
-base64 = "0.22"
 sha2 = "0.10"

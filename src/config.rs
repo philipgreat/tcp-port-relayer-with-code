@@ -1,4 +1,4 @@
-pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> [--enable-hash=true|false] [--mock-ip=<ip>] [--run-on-host=<servername>] <listen_port>-<dest> [<listen_port>-<dest> ...]\n";
+pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> [--enable-hash=true|false] [--mock-ip=<ip>] [--run-on-host=<servername>] [<listen_port>-<dest> ...]\n";
 
 pub struct AppConfig {
     pub http_port: u16,
@@ -72,7 +72,7 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
     let http_port = http_port.ok_or_else(|| "缺少参数: --http-port=<http_port>".to_string())?;
     let auth_key = auth_key.ok_or_else(|| "缺少参数: --auth-key=<auth_key>".to_string())?;
 
-    if proxy_rules.is_empty() {
+    if proxy_rules.is_empty() && mock_ip.is_none() {
         return Err("至少需要一组 <listen_port>-<dest>".to_string());
     }
 
