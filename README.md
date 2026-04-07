@@ -5,7 +5,7 @@
 程序支持一次传入多组参数，每组参数格式如下：
 
 ```bash
-./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> <listen_port>-<dest> [<listen_port>-<dest> ...]
+./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> [--enable-hash=true|false] [--mock-ip=<ip>] [--run-on-host=<servername>] <listen_port>-<dest> [<listen_port>-<dest> ...]
 ```
 
 示例：
@@ -14,9 +14,37 @@
 ./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf 9001-127.0.0.1:22 9002-3306-mysql
 ```
 
+启用 hash 授权示例：
+
+```bash
+./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --enable-hash=true 9001-127.0.0.1:22
+```
+
+生成指定客户端 IP 的授权 URL 并立即退出：
+
+```bash
+./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --enable-hash=true --mock-ip=203.0.113.10 9001-127.0.0.1:22
+```
+
+指定对外访问地址后打印完整 URL：
+
+```bash
+./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --enable-hash=true --mock-ip=203.0.113.10 --run-on-host=relay.example.com 9001-127.0.0.1:22
+```
+
+如果 `servername` 自带端口，则直接使用：
+
+```bash
+./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --run-on-host=relay.example.com:9000 9001-127.0.0.1:22
+```
+
 说明：
 
 - `--http-port` 和 `--auth-key` 是全局参数，只需要传一次
+- `--enable-hash=true` 表示授权 URL 中的 key 不再直接使用 `auth_key`，而是使用 `base64(sha256(client_ip + auth_key))`
+- `--enable-hash=false` 或不传时，仍然沿用原来的明文 `auth_key`
+- `--mock-ip=<ip>` 表示不启动服务，直接打印该客户端 IP 对应的授权 URL，然后进程退出
+- `--run-on-host=<servername>` 用于生成和展示完整管理地址；如果不带端口，则自动拼上 `--http-port`
 - 后面的每组转发规则只解析前两段：`listen_port`、`dest`
 - 第二段后面的内容会被忽略，可以作为备注使用
 - 例如 `9002-3306-mysql` 会按 `dest=3306` 处理

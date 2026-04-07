@@ -1,10 +1,14 @@
 use axum::{
-    extract::{ConnectInfo, State},
+    extract::{ConnectInfo, Path, State},
+    http::StatusCode,
     routing::get,
     Json, Router,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::process::Command;
 use std::sync::{Arc, RwLock};
 use tokio::net::TcpListener;
 
@@ -28,12 +32,18 @@ impl AuthState {
 pub async fn start_auth_service(
     http_port: u16,
     auth_key: &str,
+    enable_hash: bool,
     state: Arc<AuthState>,
 ) -> Result<(), String> {
     let app = Router::new()
-        .route(&format!("/{}", auth_key), get(add_ip_handler))
         .route("/list", get(list_ips_handler))
-        .with_state(state);
+        .route("/:provided_key", get(add_ip_handler))
+        .with_state(Arc::new(AuthServiceState {
+            auth_state: state,
+            auth_key: auth_key.to_string(),
+            enable_hash,
+        }))
+        ;
 
     let http_listener = TcpListener::bind(format!("0.0.0.0:{}", http_port))
         .await
@@ -52,15 +62,58 @@ pub async fn start_auth_service(
 }
 
 async fn add_ip_handler(
+    Path(provided_key): Path<String>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    state: State<Arc<AuthState>>,
-) -> String {
+    state: State<Arc<AuthServiceState>>,
+) -> (StatusCode, String) {
     let ip = addr.ip().to_string();
-    state.allowed_ips.write().unwrap().insert(ip.clone());
-    format!("OK: IP {} 已授权", ip)
+    if !state.is_valid_key(&ip, &provided_key) {
+        return (StatusCode::FORBIDDEN, "FORBIDDEN".to_string());
+    }
+
+    let inserted = state.auth_state.allowed_ips.write().unwrap().insert(ip.clone());
+    if inserted {
+        println!("[{}] 授权 IP 新增: {}", current_beijing_time(), ip);
+    }
+    (StatusCode::OK, format!("OK: IP {} 已授权", ip))
 }
 
-async fn list_ips_handler(state: State<Arc<AuthState>>) -> Json<Vec<String>> {
-    let ips = state.allowed_ips.read().unwrap();
+async fn list_ips_handler(state: State<Arc<AuthServiceState>>) -> Json<Vec<String>> {
+    let ips = state.auth_state.allowed_ips.read().unwrap();
     Json(ips.iter().cloned().collect())
+}
+
+fn current_beijing_time() -> String {
+    Command::new("date")
+        .env("TZ", "Asia/Shanghai")
+        .arg("+%Y-%m-%d %H:%M:%S")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown-time".to_string())
+}
+
+struct AuthServiceState {
+    auth_state: Arc<AuthState>,
+    auth_key: String,
+    enable_hash: bool,
+}
+
+impl AuthServiceState {
+    fn is_valid_key(&self, client_ip: &str, provided_key: &str) -> bool {
+        provided_key == build_auth_key(client_ip, &self.auth_key, self.enable_hash)
+    }
+}
+
+pub fn build_auth_key(client_ip: &str, auth_key: &str, enable_hash: bool) -> String {
+    if !enable_hash {
+        return auth_key.to_string();
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(client_ip.as_bytes());
+    hasher.update(auth_key.as_bytes());
+    STANDARD.encode(hasher.finalize())
 }

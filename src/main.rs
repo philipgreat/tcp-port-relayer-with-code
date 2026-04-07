@@ -35,5 +35,9 @@ async fn main() {
         return;
     }
 
+    if env::args().any(|arg| arg.starts_with("--mock-ip=")) {
+        return;
+    }
+
     pending::<()>().await;
 }
