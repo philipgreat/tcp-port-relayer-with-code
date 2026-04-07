@@ -95,6 +95,7 @@ async fn run_proxy_listener(
             let allowed = state_ref.is_allowed(&client_ip, &key);
 
             if !allowed {
+                println!("FORBIDDEN: {}", client_ip);
                 return;
             }
 

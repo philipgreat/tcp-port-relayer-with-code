@@ -53,6 +53,20 @@
 - `dest` 中不支持包含 `-`
 - 同一次启动里的所有转发端口共用同一个授权状态，授权一次 IP 后可访问全部转发规则
 
+管理接口：
+
+- `GET /ip` 返回当前请求方的 IP 地址
+- `GET /list` 返回当前已授权 IP 列表
+- `GET /<key>` 校验 key 成功后，将当前请求方 IP 加入授权列表
+
+客户端脚本：
+
+- 可使用 [scripts/auth-client.sh](/Users/Philip/githome/tcp-port-relayer-with-code/scripts/auth-client.sh) 自动从远端 `/ip` 获取当前出口 IP，计算授权 URL，并发起授权请求
+
+```bash
+./scripts/auth-client.sh http://relay.example.com:8080 987654321
+```
+
 ## 构建 armv7 Linux 静态版本
 
 依赖：

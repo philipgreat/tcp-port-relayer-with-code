@@ -35,6 +35,7 @@ pub async fn start_auth_service(
     state: Arc<AuthState>,
 ) -> Result<(), String> {
     let app = Router::new()
+        .route("/ip", get(client_ip_handler))
         .route("/list", get(list_ips_handler))
         .route("/:provided_key", get(add_ip_handler))
         .with_state(Arc::new(AuthServiceState {
@@ -67,6 +68,7 @@ async fn add_ip_handler(
 ) -> (StatusCode, String) {
     let ip = addr.ip().to_string();
     if !state.is_valid_key(&ip, &provided_key) {
+        println!("[{}] FORBIDDEN: {}", current_beijing_time(), ip);
         return (StatusCode::FORBIDDEN, "FORBIDDEN".to_string());
     }
 
@@ -80,6 +82,10 @@ async fn add_ip_handler(
 async fn list_ips_handler(state: State<Arc<AuthServiceState>>) -> Json<Vec<String>> {
     let ips = state.auth_state.allowed_ips.read().unwrap();
     Json(ips.iter().cloned().collect())
+}
+
+async fn client_ip_handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
+    addr.ip().to_string()
 }
 
 fn current_beijing_time() -> String {
@@ -115,4 +121,22 @@ pub fn build_auth_key(client_ip: &str, auth_key: &str, enable_hash: bool) -> Str
     hasher.update(client_ip.as_bytes());
     hasher.update(auth_key.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_auth_key;
+
+    #[test]
+    fn returns_plain_auth_key_when_hash_disabled() {
+        assert_eq!(build_auth_key("222.210.167.214", "987654321", false), "987654321");
+    }
+
+    #[test]
+    fn returns_lowercase_hex_sha256_when_hash_enabled() {
+        assert_eq!(
+            build_auth_key("222.210.167.214", "987654321", true),
+            "0b19e59c37c7c9a1000c8d037b2e6237a2703845bad3df8ff1efb232078e7b99"
+        );
+    }
 }

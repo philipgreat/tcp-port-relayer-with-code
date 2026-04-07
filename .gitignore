@@ -21,6 +21,7 @@ target
 #.idea/
 
 *.sh
+!scripts/auth-client.sh
 
 # Added by cargo
 
