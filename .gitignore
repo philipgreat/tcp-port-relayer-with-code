@@ -21,10 +21,10 @@ target
 #.idea/
 
 *.sh
-!scripts/auth-client.sh
 
 # Added by cargo
 
 /target
+/assets
 
 .DS_Store
