@@ -1,9 +1,8 @@
-pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> [--mock-ip=<ip>] [--run-as-client=true|false] [--run-on-host=<servername>] [<listen_port>-<dest> ...]\n";
+pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> [--auth-key=<auth_key>] [--run-as-client=true|false] --run-on-host=<servername> [<listen_port>-<dest> ...]\n";
 
 pub struct AppConfig {
     pub http_port: u16,
-    pub auth_key: String,
-    pub mock_ip: Option<String>,
+    pub auth_key: Option<String>,
     pub run_as_client: bool,
     pub run_on_host: Option<String>,
     pub proxy_rules: Vec<ProxyRule>,
@@ -17,7 +16,6 @@ pub struct ProxyRule {
 pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
     let mut http_port = None;
     let mut auth_key = None;
-    let mut mock_ip = None;
     let mut run_as_client = false;
     let mut run_on_host = None;
     let mut proxy_rules = Vec::new();
@@ -33,14 +31,6 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
 
         if let Some(value) = arg.strip_prefix("--auth-key=") {
             auth_key = Some(value.to_string());
-            continue;
-        }
-
-        if let Some(value) = arg.strip_prefix("--mock-ip=") {
-            if value.is_empty() {
-                return Err("--mock-ip 不能为空".to_string());
-            }
-            mock_ip = Some(value.to_string());
             continue;
         }
 
@@ -70,20 +60,21 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
     }
 
     let http_port = http_port.ok_or_else(|| "缺少参数: --http-port=<http_port>".to_string())?;
-    let auth_key = auth_key.ok_or_else(|| "缺少参数: --auth-key=<auth_key>".to_string())?;
-
-    if run_as_client && run_on_host.is_none() {
-        return Err("--run-as-client=true 时必须提供 --run-on-host=<servername>".to_string());
+    if run_as_client && auth_key.is_none() {
+        return Err("缺少参数: --auth-key=<auth_key>".to_string());
     }
 
-    if proxy_rules.is_empty() && mock_ip.is_none() && !run_as_client {
+    if run_on_host.is_none() {
+        return Err("缺少参数: --run-on-host=<servername>".to_string());
+    }
+
+    if proxy_rules.is_empty() && !run_as_client {
         return Err("至少需要一组 <listen_port>-<dest>".to_string());
     }
 
     Ok(AppConfig {
         http_port,
         auth_key,
-        mock_ip,
         run_as_client,
         run_on_host,
         proxy_rules,
@@ -129,10 +120,7 @@ mod tests {
 
         match parse_config(&args) {
             Ok(_) => panic!("expected parse_config to fail without --run-on-host"),
-            Err(err) => assert_eq!(
-                err,
-                "--run-as-client=true 时必须提供 --run-on-host=<servername>"
-            ),
+            Err(err) => assert_eq!(err, "缺少参数: --run-on-host=<servername>"),
         }
     }
 
@@ -149,5 +137,45 @@ mod tests {
         assert!(config.run_as_client);
         assert!(config.proxy_rules.is_empty());
         assert_eq!(config.run_on_host.as_deref(), Some("relay.example.com"));
+    }
+
+    #[test]
+    fn run_as_client_requires_auth_key() {
+        let args = vec![
+            "--http-port=8080".to_string(),
+            "--run-as-client=true".to_string(),
+            "--run-on-host=relay.example.com".to_string(),
+        ];
+
+        match parse_config(&args) {
+            Ok(_) => panic!("expected parse_config to fail without --auth-key"),
+            Err(err) => assert_eq!(err, "缺少参数: --auth-key=<auth_key>"),
+        }
+    }
+
+    #[test]
+    fn server_mode_allows_missing_auth_key() {
+        let args = vec![
+            "--http-port=8080".to_string(),
+            "--run-on-host=relay.example.com".to_string(),
+            "9001-127.0.0.1:22".to_string(),
+        ];
+
+        let config = parse_config(&args).unwrap();
+        assert!(config.auth_key.is_none());
+        assert_eq!(config.proxy_rules.len(), 1);
+    }
+
+    #[test]
+    fn server_mode_requires_run_on_host() {
+        let args = vec![
+            "--http-port=8080".to_string(),
+            "9001-127.0.0.1:22".to_string(),
+        ];
+
+        match parse_config(&args) {
+            Ok(_) => panic!("expected parse_config to fail without --run-on-host"),
+            Err(err) => assert_eq!(err, "缺少参数: --run-on-host=<servername>"),
+        }
     }
 }

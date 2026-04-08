@@ -30,7 +30,7 @@ async fn main() {
         }
     };
 
-    let should_exit = config.mock_ip.is_some() || config.run_as_client;
+    let should_exit = config.run_as_client;
 
     if let Err(err) = start_proxy(config).await {
         println!("启动失败: {}", err);

@@ -1,5 +1,7 @@
 use crate::auth::{AuthState, build_auth_key, start_auth_service};
 use crate::config::{AppConfig, ProxyRule};
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
@@ -8,32 +10,34 @@ use tokio::time::{timeout, Duration};
 const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(2 * 24 * 3600);
 
 pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
+    let auth_key = resolve_auth_key(&config)?;
     let management_base_url = build_management_base_url(config.run_on_host.as_deref(), config.http_port);
 
-    if let Some(mock_ip) = &config.mock_ip {
-        let auth_key = build_auth_key(mock_ip, &config.auth_key);
-        println!("{}/{}", management_base_url, auth_key);
-        return Ok(());
-    }
-
     if config.run_as_client {
-        run_as_client(&config).await?;
+        run_as_client(&config, &auth_key).await?;
         return Ok(());
     }
 
     let state = Arc::new(AuthState::new());
     start_auth_service(
         config.http_port,
-        &config.auth_key,
+        &auth_key,
         Arc::clone(&state),
     )
     .await?;
 
     println!("========================================");
     println!("🚀 TCP 授权代理启动");
+    if config.auth_key.is_none() {
+        println!("🔑 自动生成 auth-key: {}", auth_key);
+    }
     println!(
         "🔐 管理接口: {}/<hex_lower(sha256(client_ip + auth_key))>",
         management_base_url
+    );
+    println!(
+        "💻 客户端命令: {}",
+        build_client_command(config.run_on_host.as_deref(), config.http_port, &auth_key)
     );
     println!("⏱️  TCP idle timeout: {} 秒", TCP_IDLE_TIMEOUT.as_secs());
     for rule in &config.proxy_rules {
@@ -42,7 +46,7 @@ pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
     println!("========================================");
 
     for rule in config.proxy_rules {
-        start_proxy_listener(rule, Arc::clone(&state), config.auth_key.clone()).await?;
+        start_proxy_listener(rule, Arc::clone(&state), auth_key.clone()).await?;
     }
 
     Ok(())
@@ -56,13 +60,42 @@ fn build_management_base_url(run_on_host: Option<&str>, http_port: u16) -> Strin
     }
 }
 
-async fn run_as_client(config: &AppConfig) -> Result<(), String> {
+async fn run_as_client(config: &AppConfig, auth_key: &str) -> Result<(), String> {
     let authority = build_management_authority(config.run_on_host.as_deref(), config.http_port)?;
     let client_ip = http_get_text(&authority, "/ip").await?;
-    let key = build_auth_key(&client_ip, &config.auth_key);
+    let key = build_auth_key(&client_ip, auth_key);
     let response = http_get_text(&authority, &format!("/{}", key)).await?;
     println!("{}", response);
     Ok(())
+}
+
+fn resolve_auth_key(config: &AppConfig) -> Result<String, String> {
+    match &config.auth_key {
+        Some(auth_key) => Ok(auth_key.clone()),
+        None => generate_auth_key(),
+    }
+}
+
+fn generate_auth_key() -> Result<String, String> {
+    let mut bytes = [0u8; 32];
+    File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut bytes))
+        .map_err(|err| format!("自动生成 auth-key 失败: {}", err))?;
+    Ok(bytes.iter().map(|byte| format!("{:02x}", byte)).collect())
+}
+
+fn build_client_command(run_on_host: Option<&str>, http_port: u16, auth_key: &str) -> String {
+    let host = run_on_host.expect("run_on_host must be validated before start_proxy");
+    format!(
+        "./tcp-auth-proxy --http-port={} --auth-key={} --run-as-client=true --run-on-host={}",
+        http_port,
+        shell_escape(auth_key),
+        shell_escape(host)
+    )
+}
+
+fn shell_escape(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn build_management_authority(run_on_host: Option<&str>, http_port: u16) -> Result<String, String> {
