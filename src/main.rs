@@ -25,7 +25,7 @@ async fn main() {
     let config = match parse_config(&args[1..]) {
         Ok(config) => config,
         Err(err) => {
-            println!("参数格式错误: {}", err);
+            println!("Invalid arguments: {}", err);
             println!("{}", USAGE);
             return;
         }
@@ -34,7 +34,7 @@ async fn main() {
     let should_exit = config.run_as_client;
 
     if let Err(err) = start_proxy(config).await {
-        println!("启动失败: {}", err);
+        println!("Startup failed: {}", err);
         return;
     }
 

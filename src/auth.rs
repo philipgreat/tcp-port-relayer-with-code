@@ -47,7 +47,7 @@ pub async fn start_auth_service(
 
     let http_listener = TcpListener::bind(format!("0.0.0.0:{}", http_port))
         .await
-        .map_err(|err| format!("HTTP 端口 {} 绑定失败: {}", http_port, err))?;
+        .map_err(|err| format!("Failed to bind HTTP port {}: {}", http_port, err))?;
 
     tokio::spawn(async move {
         axum::serve(
@@ -74,9 +74,9 @@ async fn add_ip_handler(
 
     let inserted = state.auth_state.allowed_ips.write().unwrap().insert(ip.clone());
     if inserted {
-        println!("[{}] 授权 IP 新增: {}", current_beijing_time(), ip);
+        println!("[{}] Authorized IP added: {}", current_beijing_time(), ip);
     }
-    (StatusCode::OK, format!("OK: IP {} 已授权", ip))
+    (StatusCode::OK, format!("OK: IP {} is authorized", ip))
 }
 
 async fn list_ips_handler(state: State<Arc<AuthServiceState>>) -> Json<Vec<String>> {

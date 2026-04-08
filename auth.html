@@ -129,16 +129,16 @@
 </head>
 <body>
   <main class="card">
-    <h1>认证授权</h1>
-    <p>输入 auth key，页面会自动获取当前 IP，计算授权 URL，并显示请求结果。</p>
+    <h1>Authorize Access</h1>
+    <p>Enter the auth key. This page will fetch your current IP, build the authorization URL, and show the server response.</p>
 
     <label for="authKey">Auth Key</label>
-    <input id="authKey" type="password" autocomplete="off" placeholder="请输入 auth key">
-    <button id="submitBtn" type="button">立即授权</button>
+    <input id="authKey" type="password" autocomplete="off" placeholder="Enter auth key">
+    <button id="submitBtn" type="button">Authorize Now</button>
 
     <section class="meta">
-      <strong>当前 IP</strong>
-      <div id="ipText">读取中...</div>
+      <strong>Current IP</strong>
+      <div id="ipText">Loading...</div>
     </section>
 
     <section id="result" class="result" hidden></section>
@@ -156,10 +156,10 @@
       try {
         const response = await fetch("/ip", { cache: "no-store" });
         if (!response.ok) {
-          throw new Error(`读取 /ip 失败: HTTP ${response.status}`);
+          throw new Error(`Failed to load /ip: HTTP ${response.status}`);
         }
         currentIp = (await response.text()).trim();
-        ipText.textContent = currentIp || "未获取到 IP";
+        ipText.textContent = currentIp || "No IP returned";
       } catch (error) {
         ipText.textContent = error.message;
       }
@@ -168,7 +168,7 @@
     function setResult(message, ok) {
       resultBox.hidden = false;
       resultBox.className = `result ${ok ? "ok" : "error"}`;
-      resultBox.innerHTML = `<strong>${ok ? "授权结果" : "错误"}</strong>${message}`;
+      resultBox.innerHTML = `<strong>${ok ? "Authorization Result" : "Error"}</strong>${message}`;
     }
 
     async function sha256Hex(text) {
@@ -182,20 +182,20 @@
     async function authorize() {
       const authKey = authKeyInput.value.trim();
       if (!authKey) {
-        setResult("请输入 auth key", false);
+        setResult("Please enter the auth key", false);
         return;
       }
       if (!currentIp) {
-        setResult("当前 IP 未准备好，请稍后重试", false);
+        setResult("The current IP is not ready yet. Please try again.", false);
         return;
       }
       if (!window.crypto || !window.crypto.subtle) {
-        setResult("当前浏览器不支持 SHA-256 计算", false);
+        setResult("This browser does not support SHA-256 hashing", false);
         return;
       }
 
       submitBtn.disabled = true;
-      setResult("请求中...", true);
+      setResult("Request in progress...", true);
 
       try {
         const key = await sha256Hex(currentIp + authKey);

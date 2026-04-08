@@ -1,92 +1,92 @@
 # tcp-port-relayer-with-code
 
-## 用法
+## Usage
 
-程序支持一次传入多组参数，每组参数格式如下：
+The program accepts one or more forwarding rules in a single invocation:
 
 ```bash
 ./tcp-auth-proxy --http-port=<http_port> [--auth-key=<auth_key>] [--run-as-client=true|false] --run-on-host=<servername> [<listen_port>-<dest> ...]
 ```
 
-示例：
+Example:
 
 ```bash
 ./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --run-on-host=relay.example.com 9001-127.0.0.1:22 9002-3306-mysql
 ```
 
-启用 hash 授权示例：
+Server mode with an auto-generated auth key:
 
 ```bash
 ./tcp-auth-proxy --http-port=8080 --run-on-host=relay.example.com 9001-127.0.0.1:22
 ```
 
-作为客户端自动获取本机出口 IP 并完成授权：
+Client mode that fetches the current public IP and authorizes it:
 
 ```bash
 ./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --run-as-client=true --run-on-host=relay.example.com
 ```
 
-如果 `servername` 自带端口，则直接使用：
+If `servername` already includes a port, it is used as-is:
 
 ```bash
 ./tcp-auth-proxy --http-port=8080 --auth-key=123123sdfasdf --run-on-host=relay.example.com:9000 9001-127.0.0.1:22
 ```
 
-说明：
+Notes:
 
-- `--http-port` 和 `--auth-key` 是全局参数，只需要传一次
-- 服务端模式下 `--auth-key` 可以省略；省略时会自动生成一个高强度随机 key，并在启动日志中打印
-- 授权 URL 中的 key 固定使用 `sha256(client_ip + auth_key)` 的小写 hex
-- `--run-as-client=true` 表示作为客户端运行：请求 `http://<host>:<http-port>/ip` 取得出口 IP，计算 `sha256(ip + auth_key)` 的小写 hex，再请求对应授权 URL 并打印 HTTP 返回内容
-- `--run-on-host=<servername>` 是服务端模式和客户端模式的必填参数，用于生成和访问管理地址；如果不带端口，则自动拼上 `--http-port`
-- `--run-as-client=true` 时还必须提供 `--auth-key=<auth_key>`
-- 后面的每组转发规则只解析前两段：`listen_port`、`dest`
-- 第二段后面的内容会被忽略，可以作为备注使用
-- 例如 `9002-3306-mysql` 会按 `dest=3306` 处理
-- `dest` 如果是纯端口号，会自动转成 `127.0.0.1:<port>`
-- `dest` 中不支持包含 `-`
-- 同一次启动里的所有转发端口共用同一个授权状态，授权一次 IP 后可访问全部转发规则
+- `--http-port` and `--auth-key` are global parameters and only need to be provided once
+- In server mode, `--auth-key` is optional. If omitted, a strong random key is generated and printed at startup
+- Authorization keys always use lowercase hex `sha256(client_ip + auth_key)`
+- `--run-as-client=true` runs in client mode: it requests `http://<host>:<http-port>/ip`, computes lowercase hex `sha256(ip + auth_key)`, then requests the authorization URL and prints the HTTP response
+- `--run-on-host=<servername>` is required in both server mode and client mode. If it does not include a port, `--http-port` is appended automatically
+- `--run-as-client=true` also requires `--auth-key=<auth_key>`
+- Only the first two segments of each forwarding rule are parsed: `listen_port`, `dest`
+- Any content after the second segment is ignored and can be used as a note
+- For example, `9002-3306-mysql` is treated as `dest=3306`
+- If `dest` is just a port number, it is converted to `127.0.0.1:<port>`
+- `dest` cannot contain `-`
+- All forwarding ports in the same process share one authorization state; authorizing one IP unlocks every forwarding rule in that process
 
-管理接口：
+Management endpoints:
 
-- `GET /` 运行时读取当前目录下的 `auth.html` 并返回认证页面；如果文件不存在，会返回错误
-- `GET /ip` 返回当前请求方的 IP 地址
-- `GET /list` 返回当前已授权 IP 列表
-- `GET /<key>` 校验 key 成功后，将当前请求方 IP 加入授权列表
+- `GET /` loads `auth.html` from the current working directory at runtime and returns the auth page; if the file is missing, the request returns an error
+- `GET /ip` returns the requester's IP address
+- `GET /list` returns the list of currently authorized IPs
+- `GET /<key>` validates the key and adds the requester's IP to the authorized list
 
-## 构建 armv7 Linux 静态版本
+## Build Armv7 Linux Static Binary
 
-依赖：
+Requirements:
 
 - `zig`
 - `cargo-zigbuild`
 - Rust target: `armv7-unknown-linux-musleabihf`
 
-首次构建先安装 target：
+Install the Rust target first:
 
 ```bash
 rustup target add armv7-unknown-linux-musleabihf
 ```
 
-编译命令：
+Build command:
 
 ```bash
 cargo zigbuild --release --target armv7-unknown-linux-musleabihf
 ```
 
-或者直接执行：
+Or run:
 
 ```bash
 make armv7-musl
 ```
 
-输出文件：
+Output file:
 
 ```bash
 target/armv7-unknown-linux-musleabihf/release/tcp-auth-proxy
 ```
 
-说明：
+Notes:
 
-- 这是静态 musl 版本，部署时不依赖目标机器上的 glibc
-- 产物没有 interpreter，这是静态链接的正常表现
+- This is a static musl build and does not depend on glibc on the target machine
+- The output binary has no interpreter, which is expected for a static binary

@@ -1,4 +1,4 @@
-pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> [--auth-key=<auth_key>] [--run-as-client=true|false] --run-on-host=<servername> [<listen_port>-<dest> ...]\n";
+pub const USAGE: &str = "Usage: ./tcp-auth-proxy --http-port=<http_port> [--auth-key=<auth_key>] [--run-as-client=true|false] --run-on-host=<servername> [<listen_port>-<dest> ...]\n";
 
 pub struct AppConfig {
     pub http_port: u16,
@@ -24,7 +24,7 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
         if let Some(value) = arg.strip_prefix("--http-port=") {
             let port = value
                 .parse()
-                .map_err(|_| format!("http_port 无法解析: `{}`", value))?;
+                .map_err(|_| format!("cannot parse http_port: `{}`", value))?;
             http_port = Some(port);
             continue;
         }
@@ -40,7 +40,7 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
                 "false" => false,
                 _ => {
                     return Err(format!(
-                        "--run-as-client 只能是 true 或 false: `{}`",
+                        "--run-as-client must be true or false: `{}`",
                         value
                     ))
                 }
@@ -50,7 +50,7 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
 
         if let Some(value) = arg.strip_prefix("--run-on-host=") {
             if value.is_empty() {
-                return Err("--run-on-host 不能为空".to_string());
+                return Err("--run-on-host cannot be empty".to_string());
             }
             run_on_host = Some(value.to_string());
             continue;
@@ -59,17 +59,17 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
         proxy_rules.push(parse_proxy_rule(arg)?);
     }
 
-    let http_port = http_port.ok_or_else(|| "缺少参数: --http-port=<http_port>".to_string())?;
+    let http_port = http_port.ok_or_else(|| "missing argument: --http-port=<http_port>".to_string())?;
     if run_as_client && auth_key.is_none() {
-        return Err("缺少参数: --auth-key=<auth_key>".to_string());
+        return Err("missing argument: --auth-key=<auth_key>".to_string());
     }
 
     if run_on_host.is_none() {
-        return Err("缺少参数: --run-on-host=<servername>".to_string());
+        return Err("missing argument: --run-on-host=<servername>".to_string());
     }
 
     if proxy_rules.is_empty() && !run_as_client {
-        return Err("至少需要一组 <listen_port>-<dest>".to_string());
+        return Err("at least one <listen_port>-<dest> rule is required".to_string());
     }
 
     Ok(AppConfig {
@@ -84,19 +84,19 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
 fn parse_proxy_rule(raw_arg: &str) -> Result<ProxyRule, String> {
     let parts: Vec<&str> = raw_arg.split('-').collect();
     if parts.len() < 2 {
-        return Err(format!("`{}` 不是 <listen_port>-<dest>", raw_arg));
+        return Err(format!("`{}` is not <listen_port>-<dest>", raw_arg));
     }
 
     let listen_port = parts[0]
         .parse()
-        .map_err(|_| format!("listen_port 无法解析: `{}`", parts[0]))?;
+        .map_err(|_| format!("cannot parse listen_port: `{}`", parts[0]))?;
 
     let dest_addr = if parts[1].contains(':') {
         parts[1].to_string()
     } else {
         let port: u16 = parts[1]
             .parse()
-            .map_err(|_| format!("dest 无法解析: `{}`", parts[1]))?;
+            .map_err(|_| format!("cannot parse dest: `{}`", parts[1]))?;
         format!("127.0.0.1:{}", port)
     };
 
@@ -120,7 +120,7 @@ mod tests {
 
         match parse_config(&args) {
             Ok(_) => panic!("expected parse_config to fail without --run-on-host"),
-            Err(err) => assert_eq!(err, "缺少参数: --run-on-host=<servername>"),
+            Err(err) => assert_eq!(err, "missing argument: --run-on-host=<servername>"),
         }
     }
 
@@ -149,7 +149,7 @@ mod tests {
 
         match parse_config(&args) {
             Ok(_) => panic!("expected parse_config to fail without --auth-key"),
-            Err(err) => assert_eq!(err, "缺少参数: --auth-key=<auth_key>"),
+            Err(err) => assert_eq!(err, "missing argument: --auth-key=<auth_key>"),
         }
     }
 
@@ -175,7 +175,7 @@ mod tests {
 
         match parse_config(&args) {
             Ok(_) => panic!("expected parse_config to fail without --run-on-host"),
-            Err(err) => assert_eq!(err, "缺少参数: --run-on-host=<servername>"),
+            Err(err) => assert_eq!(err, "missing argument: --run-on-host=<servername>"),
         }
     }
 }

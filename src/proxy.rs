@@ -27,21 +27,21 @@ pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
     .await?;
 
     println!("========================================");
-    println!("🚀 TCP 授权代理启动");
+    println!("TCP authorization proxy started");
     if config.auth_key.is_none() {
-        println!("🔑 自动生成 auth-key: {}", auth_key);
+        println!("Generated auth key: {}", auth_key);
     }
     println!(
-        "🔐 管理接口: {}/<hex_lower(sha256(client_ip + auth_key))>",
+        "Management URL: {}/<hex_lower(sha256(client_ip + auth_key))>",
         management_base_url
     );
     println!(
-        "💻 客户端命令: {}",
+        "Client command: {}",
         build_client_command(config.run_on_host.as_deref(), config.http_port, &auth_key)
     );
-    println!("⏱️  TCP idle timeout: {} 秒", TCP_IDLE_TIMEOUT.as_secs());
+    println!("TCP idle timeout: {} seconds", TCP_IDLE_TIMEOUT.as_secs());
     for rule in &config.proxy_rules {
-        println!("🛡️  转发: :{} -> {}", rule.listen_port, rule.dest_addr);
+        println!("Forwarding: :{} -> {}", rule.listen_port, rule.dest_addr);
     }
     println!("========================================");
 
@@ -80,7 +80,7 @@ fn generate_auth_key() -> Result<String, String> {
     let mut bytes = [0u8; 32];
     File::open("/dev/urandom")
         .and_then(|mut file| file.read_exact(&mut bytes))
-        .map_err(|err| format!("自动生成 auth-key 失败: {}", err))?;
+        .map_err(|err| format!("failed to generate auth key: {}", err))?;
     Ok(bytes.iter().map(|byte| format!("{:02x}", byte)).collect())
 }
 
@@ -102,7 +102,7 @@ fn build_management_authority(run_on_host: Option<&str>, http_port: u16) -> Resu
     match run_on_host {
         Some(host) if host.contains(':') => Ok(host.to_string()),
         Some(host) => Ok(format!("{}:{}", host, http_port)),
-        None => Err("缺少参数: --run-on-host=<servername>".to_string()),
+        None => Err("missing argument: --run-on-host=<servername>".to_string()),
     }
 }
 
@@ -124,12 +124,12 @@ async fn http_get_text(authority: &str, path: &str) -> Result<String, String> {
     stream
         .read_to_end(&mut response)
         .await
-        .map_err(|err| format!("读取 {}{} 响应失败: {}", authority, path, err))?;
+        .map_err(|err| format!("failed to read response from {}{}: {}", authority, path, err))?;
 
-    let response = String::from_utf8(response).map_err(|err| format!("响应不是合法 UTF-8: {}", err))?;
+    let response = String::from_utf8(response).map_err(|err| format!("response is not valid UTF-8: {}", err))?;
     let (headers, body) = response
         .split_once("\r\n\r\n")
-        .ok_or_else(|| format!("{}{} 返回了非法 HTTP 响应", authority, path))?;
+        .ok_or_else(|| format!("{}{} returned an invalid HTTP response", authority, path))?;
     let status_line = headers.lines().next().unwrap_or_default();
     if !status_line.contains(" 200 ") {
         return Err(format!("请求 {}{} 失败: {}", authority, path, status_line));
@@ -145,7 +145,7 @@ async fn start_proxy_listener(
 ) -> Result<(), String> {
     let proxy_listener = TcpListener::bind(format!("0.0.0.0:{}", rule.listen_port))
         .await
-        .map_err(|err| format!("TCP 端口 {} 绑定失败: {}", rule.listen_port, err))?;
+        .map_err(|err| format!("Failed to bind TCP port {}: {}", rule.listen_port, err))?;
 
     tokio::spawn(run_proxy_listener(
         proxy_listener,
