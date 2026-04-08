@@ -31,7 +31,6 @@ impl AuthState {
 pub async fn start_auth_service(
     http_port: u16,
     auth_key: &str,
-    enable_hash: bool,
     state: Arc<AuthState>,
 ) -> Result<(), String> {
     let app = Router::new()
@@ -41,7 +40,6 @@ pub async fn start_auth_service(
         .with_state(Arc::new(AuthServiceState {
             auth_state: state,
             auth_key: auth_key.to_string(),
-            enable_hash,
         }))
         ;
 
@@ -103,20 +101,15 @@ fn current_beijing_time() -> String {
 struct AuthServiceState {
     auth_state: Arc<AuthState>,
     auth_key: String,
-    enable_hash: bool,
 }
 
 impl AuthServiceState {
     fn is_valid_key(&self, client_ip: &str, provided_key: &str) -> bool {
-        provided_key == build_auth_key(client_ip, &self.auth_key, self.enable_hash)
+        provided_key == build_auth_key(client_ip, &self.auth_key)
     }
 }
 
-pub fn build_auth_key(client_ip: &str, auth_key: &str, enable_hash: bool) -> String {
-    if !enable_hash {
-        return auth_key.to_string();
-    }
-
+pub fn build_auth_key(client_ip: &str, auth_key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(client_ip.as_bytes());
     hasher.update(auth_key.as_bytes());
@@ -128,14 +121,9 @@ mod tests {
     use super::build_auth_key;
 
     #[test]
-    fn returns_plain_auth_key_when_hash_disabled() {
-        assert_eq!(build_auth_key("222.210.167.214", "987654321", false), "987654321");
-    }
-
-    #[test]
-    fn returns_lowercase_hex_sha256_when_hash_enabled() {
+    fn returns_lowercase_hex_sha256() {
         assert_eq!(
-            build_auth_key("222.210.167.214", "987654321", true),
+            build_auth_key("222.210.167.214", "987654321"),
             "0b19e59c37c7c9a1000c8d037b2e6237a2703845bad3df8ff1efb232078e7b99"
         );
     }

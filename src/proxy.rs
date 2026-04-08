@@ -1,7 +1,7 @@
 use crate::auth::{AuthState, build_auth_key, start_auth_service};
 use crate::config::{AppConfig, ProxyRule};
 use std::sync::Arc;
-use tokio::io::copy_bidirectional;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
@@ -11,8 +11,13 @@ pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
     let management_base_url = build_management_base_url(config.run_on_host.as_deref(), config.http_port);
 
     if let Some(mock_ip) = &config.mock_ip {
-        let auth_key = build_auth_key(mock_ip, &config.auth_key, config.enable_hash);
+        let auth_key = build_auth_key(mock_ip, &config.auth_key);
         println!("{}/{}", management_base_url, auth_key);
+        return Ok(());
+    }
+
+    if config.run_as_client {
+        run_as_client(&config).await?;
         return Ok(());
     }
 
@@ -20,21 +25,16 @@ pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
     start_auth_service(
         config.http_port,
         &config.auth_key,
-        config.enable_hash,
         Arc::clone(&state),
     )
     .await?;
 
     println!("========================================");
     println!("🚀 TCP 授权代理启动");
-    if config.enable_hash {
-        println!(
-            "🔐 管理接口: {}/<hex_lower(sha256(client_ip + auth_key))>",
-            management_base_url
-        );
-    } else {
-        println!("🔗 管理接口: {}/{}", management_base_url, config.auth_key);
-    }
+    println!(
+        "🔐 管理接口: {}/<hex_lower(sha256(client_ip + auth_key))>",
+        management_base_url
+    );
     println!("⏱️  TCP idle timeout: {} 秒", TCP_IDLE_TIMEOUT.as_secs());
     for rule in &config.proxy_rules {
         println!("🛡️  转发: :{} -> {}", rule.listen_port, rule.dest_addr);
@@ -54,6 +54,55 @@ fn build_management_base_url(run_on_host: Option<&str>, http_port: u16) -> Strin
         Some(host) => format!("http://{}:{}", host, http_port),
         None => format!("http://<IP>:{}", http_port),
     }
+}
+
+async fn run_as_client(config: &AppConfig) -> Result<(), String> {
+    let authority = build_management_authority(config.run_on_host.as_deref(), config.http_port)?;
+    let client_ip = http_get_text(&authority, "/ip").await?;
+    let key = build_auth_key(&client_ip, &config.auth_key);
+    let response = http_get_text(&authority, &format!("/{}", key)).await?;
+    println!("{}", response);
+    Ok(())
+}
+
+fn build_management_authority(run_on_host: Option<&str>, http_port: u16) -> Result<String, String> {
+    match run_on_host {
+        Some(host) if host.contains(':') => Ok(host.to_string()),
+        Some(host) => Ok(format!("{}:{}", host, http_port)),
+        None => Err("缺少参数: --run-on-host=<servername>".to_string()),
+    }
+}
+
+async fn http_get_text(authority: &str, path: &str) -> Result<String, String> {
+    let mut stream = TcpStream::connect(authority)
+        .await
+        .map_err(|err| format!("连接 {} 失败: {}", authority, err))?;
+
+    let request = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        path, authority
+    );
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .map_err(|err| format!("请求 {}{} 失败: {}", authority, path, err))?;
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .await
+        .map_err(|err| format!("读取 {}{} 响应失败: {}", authority, path, err))?;
+
+    let response = String::from_utf8(response).map_err(|err| format!("响应不是合法 UTF-8: {}", err))?;
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| format!("{}{} 返回了非法 HTTP 响应", authority, path))?;
+    let status_line = headers.lines().next().unwrap_or_default();
+    if !status_line.contains(" 200 ") {
+        return Err(format!("请求 {}{} 失败: {}", authority, path, status_line));
+    }
+
+    Ok(body.trim().to_string())
 }
 
 async fn start_proxy_listener(

@@ -1,10 +1,10 @@
-pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> [--enable-hash=true|false] [--mock-ip=<ip>] [--run-on-host=<servername>] [<listen_port>-<dest> ...]\n";
+pub const USAGE: &str = "用法: ./tcp-auth-proxy --http-port=<http_port> --auth-key=<auth_key> [--mock-ip=<ip>] [--run-as-client=true|false] [--run-on-host=<servername>] [<listen_port>-<dest> ...]\n";
 
 pub struct AppConfig {
     pub http_port: u16,
     pub auth_key: String,
-    pub enable_hash: bool,
     pub mock_ip: Option<String>,
+    pub run_as_client: bool,
     pub run_on_host: Option<String>,
     pub proxy_rules: Vec<ProxyRule>,
 }
@@ -17,8 +17,8 @@ pub struct ProxyRule {
 pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
     let mut http_port = None;
     let mut auth_key = None;
-    let mut enable_hash = false;
     let mut mock_ip = None;
+    let mut run_as_client = false;
     let mut run_on_host = None;
     let mut proxy_rules = Vec::new();
 
@@ -36,25 +36,25 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
             continue;
         }
 
-        if let Some(value) = arg.strip_prefix("--enable-hash=") {
-            enable_hash = match value {
-                "true" => true,
-                "false" => false,
-                _ => {
-                    return Err(format!(
-                        "--enable-hash 只能是 true 或 false: `{}`",
-                        value
-                    ))
-                }
-            };
-            continue;
-        }
-
         if let Some(value) = arg.strip_prefix("--mock-ip=") {
             if value.is_empty() {
                 return Err("--mock-ip 不能为空".to_string());
             }
             mock_ip = Some(value.to_string());
+            continue;
+        }
+
+        if let Some(value) = arg.strip_prefix("--run-as-client=") {
+            run_as_client = match value {
+                "true" => true,
+                "false" => false,
+                _ => {
+                    return Err(format!(
+                        "--run-as-client 只能是 true 或 false: `{}`",
+                        value
+                    ))
+                }
+            };
             continue;
         }
 
@@ -72,15 +72,19 @@ pub fn parse_config(args: &[String]) -> Result<AppConfig, String> {
     let http_port = http_port.ok_or_else(|| "缺少参数: --http-port=<http_port>".to_string())?;
     let auth_key = auth_key.ok_or_else(|| "缺少参数: --auth-key=<auth_key>".to_string())?;
 
-    if proxy_rules.is_empty() && mock_ip.is_none() {
+    if run_as_client && run_on_host.is_none() {
+        return Err("--run-as-client=true 时必须提供 --run-on-host=<servername>".to_string());
+    }
+
+    if proxy_rules.is_empty() && mock_ip.is_none() && !run_as_client {
         return Err("至少需要一组 <listen_port>-<dest>".to_string());
     }
 
     Ok(AppConfig {
         http_port,
         auth_key,
-        enable_hash,
         mock_ip,
+        run_as_client,
         run_on_host,
         proxy_rules,
     })
@@ -109,4 +113,41 @@ fn parse_proxy_rule(raw_arg: &str) -> Result<ProxyRule, String> {
         listen_port,
         dest_addr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_config;
+
+    #[test]
+    fn run_as_client_requires_run_on_host() {
+        let args = vec![
+            "--http-port=8080".to_string(),
+            "--auth-key=987654321".to_string(),
+            "--run-as-client=true".to_string(),
+        ];
+
+        match parse_config(&args) {
+            Ok(_) => panic!("expected parse_config to fail without --run-on-host"),
+            Err(err) => assert_eq!(
+                err,
+                "--run-as-client=true 时必须提供 --run-on-host=<servername>"
+            ),
+        }
+    }
+
+    #[test]
+    fn run_as_client_allows_missing_proxy_rules() {
+        let args = vec![
+            "--http-port=8080".to_string(),
+            "--auth-key=987654321".to_string(),
+            "--run-as-client=true".to_string(),
+            "--run-on-host=relay.example.com".to_string(),
+        ];
+
+        let config = parse_config(&args).unwrap();
+        assert!(config.run_as_client);
+        assert!(config.proxy_rules.is_empty());
+        assert_eq!(config.run_on_host.as_deref(), Some("relay.example.com"));
+    }
 }
