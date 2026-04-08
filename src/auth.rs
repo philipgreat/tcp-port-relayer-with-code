@@ -1,3 +1,4 @@
+use crate::auth_page::auth_page_handler;
 use axum::{
     extract::{ConnectInfo, Path, State},
     http::StatusCode,
@@ -34,6 +35,7 @@ pub async fn start_auth_service(
     state: Arc<AuthState>,
 ) -> Result<(), String> {
     let app = Router::new()
+        .route("/", get(auth_page_handler))
         .route("/ip", get(client_ip_handler))
         .route("/list", get(list_ips_handler))
         .route("/:provided_key", get(add_ip_handler))

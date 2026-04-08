@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TCP Auth</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: linear-gradient(180deg, #f6efe4 0%, #efe5d2 100%);
+      --panel: rgba(255, 252, 245, 0.94);
+      --text: #1f2933;
+      --muted: #52606d;
+      --accent: #b44d1e;
+      --accent-strong: #8f360d;
+      --border: rgba(107, 114, 128, 0.18);
+      --ok: #166534;
+      --error: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(100%, 460px);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 28px 22px;
+      box-shadow: 0 24px 60px rgba(68, 35, 16, 0.14);
+      backdrop-filter: blur(10px);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 32px;
+      line-height: 1.05;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: var(--muted);
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      font-size: 18px;
+      outline: none;
+      background: #fff;
+      margin-bottom: 16px;
+    }
+
+    input:focus {
+      border-color: rgba(180, 77, 30, 0.5);
+      box-shadow: 0 0 0 4px rgba(180, 77, 30, 0.12);
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 18px;
+      padding: 18px 20px;
+      font-size: 20px;
+      font-weight: 700;
+      color: #fffaf1;
+      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .meta,
+    .result {
+      margin-top: 16px;
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--border);
+      word-break: break-all;
+    }
+
+    .meta strong,
+    .result strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .result.ok {
+      color: var(--ok);
+    }
+
+    .result.error {
+      color: var(--error);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>认证授权</h1>
+    <p>输入 auth key，页面会自动获取当前 IP，计算授权 URL，并显示请求结果。</p>
+
+    <label for="authKey">Auth Key</label>
+    <input id="authKey" type="password" autocomplete="off" placeholder="请输入 auth key">
+    <button id="submitBtn" type="button">立即授权</button>
+
+    <section class="meta">
+      <strong>当前 IP</strong>
+      <div id="ipText">读取中...</div>
+    </section>
+
+    <section id="result" class="result" hidden></section>
+  </main>
+
+  <script>
+    const authKeyInput = document.getElementById("authKey");
+    const submitBtn = document.getElementById("submitBtn");
+    const ipText = document.getElementById("ipText");
+    const resultBox = document.getElementById("result");
+
+    let currentIp = "";
+
+    async function loadIp() {
+      try {
+        const response = await fetch("/ip", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`读取 /ip 失败: HTTP ${response.status}`);
+        }
+        currentIp = (await response.text()).trim();
+        ipText.textContent = currentIp || "未获取到 IP";
+      } catch (error) {
+        ipText.textContent = error.message;
+      }
+    }
+
+    function setResult(message, ok) {
+      resultBox.hidden = false;
+      resultBox.className = `result ${ok ? "ok" : "error"}`;
+      resultBox.innerHTML = `<strong>${ok ? "授权结果" : "错误"}</strong>${message}`;
+    }
+
+    async function sha256Hex(text) {
+      const buffer = new TextEncoder().encode(text);
+      const hash = await crypto.subtle.digest("SHA-256", buffer);
+      return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    async function authorize() {
+      const authKey = authKeyInput.value.trim();
+      if (!authKey) {
+        setResult("请输入 auth key", false);
+        return;
+      }
+      if (!currentIp) {
+        setResult("当前 IP 未准备好，请稍后重试", false);
+        return;
+      }
+      if (!window.crypto || !window.crypto.subtle) {
+        setResult("当前浏览器不支持 SHA-256 计算", false);
+        return;
+      }
+
+      submitBtn.disabled = true;
+      setResult("请求中...", true);
+
+      try {
+        const key = await sha256Hex(currentIp + authKey);
+        const response = await fetch(`/${key}`, { cache: "no-store" });
+        const text = await response.text();
+        setResult(text, response.ok);
+      } catch (error) {
+        setResult(error.message, false);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    submitBtn.addEventListener("click", authorize);
+    authKeyInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        authorize();
+      }
+    });
+
+    loadIp();
+  </script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 mod auth;
+mod auth_page;
 mod config;
 mod proxy;
 
