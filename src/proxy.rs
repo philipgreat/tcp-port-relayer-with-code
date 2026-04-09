@@ -35,10 +35,14 @@ pub async fn start_proxy(config: AppConfig) -> Result<(), String> {
         "Management URL: {}/<hex_lower(sha256(client_ip + auth_key))>",
         management_base_url
     );
+    println!("------------ Client Command: -----------");
+    println!();
     println!(
-        "Client command: {}",
+        "{}",
         build_client_command(config.run_on_host.as_deref(), config.http_port, &auth_key)
     );
+    println!();
+    println!("----------------------------------------");
     println!("TCP idle timeout: {} seconds", TCP_IDLE_TIMEOUT.as_secs());
     for rule in &config.proxy_rules {
         println!("Forwarding: :{} -> {}", rule.listen_port, rule.dest_addr);
