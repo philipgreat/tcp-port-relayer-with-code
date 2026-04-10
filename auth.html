@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TCP Auth</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -172,6 +173,14 @@
     }
 
     async function sha256Hex(text) {
+      if (window.CryptoJS) {
+        return CryptoJS.SHA256(text).toString(CryptoJS.enc.Hex);
+      }
+
+      if (!window.crypto || !window.crypto.subtle) {
+        throw new Error("This browser does not support SHA-256 hashing");
+      }
+
       const buffer = new TextEncoder().encode(text);
       const hash = await crypto.subtle.digest("SHA-256", buffer);
       return Array.from(new Uint8Array(hash))
@@ -189,7 +198,7 @@
         setResult("The current IP is not ready yet. Please try again.", false);
         return;
       }
-      if (!window.crypto || !window.crypto.subtle) {
+      if (!window.CryptoJS && (!window.crypto || !window.crypto.subtle)) {
         setResult("This browser does not support SHA-256 hashing", false);
         return;
       }
